@@ -9,29 +9,8 @@ def process_tc_files():
     """
     
 
-    START_SEQUENCE = b'\x4C\x53\x58\x38\x01\x03\x14\x00\x00\x01\x00\x00'
-    SEPARATOR = b'\x08\x04'
-    separator_index = 122
-    SEPARATOR2 = b'\x28\x00\x10\x00'
-    separator2_index = 256
-#koniec hlavicky?
-
-#Separator dat. Asi bude treba odobrat 8 bytov zo zaciatku.
-    s9 = b'\x10\x00\x04\x00\x00\x00\x00\x00'
-    
-
-#Separator koncovej mapy. Asi bude treba odobrat 8 bytov zo zaciatku.
-    s9 = b'\x10\x00\x02\x00\x00\x00\x00\x00'
-
-#Zaciatok dat?
-    s10 = b'\x00\x00\x0D\x00'
-
-    # Define the separator sequence as bytes (08 04 in hex)
-    # The order matters: 08 followed by 04
-
-
     # Use glob to find all files ending with .TC in the current directory
-    tc_files = glob.glob("resources/*.TC")
+    tc_files = glob.glob("input/*.TC")
 
     if not tc_files:
         print("No .TC files found in the current directory.")
@@ -49,22 +28,16 @@ def process_tc_files():
                 content = f.read()
 
             decoded_data = decode_binary_data(content)
-
             parameters_map_raw = decoded_data['ParametersMap']
             measurements_seq_raw = decoded_data['MeasurementsSeq']
             variables_and_units_seq_raw = decoded_data['VariablesAndUnitsSeq']
 
-
             parameters_map = process_parameters_map(parameters_map_raw)
             variables_and_units = process_variables_units(variables_and_units_seq_raw)
             variables_with_units = variables_and_units_to_string(parameters_map, variables_and_units)
-
             measurements = process_measurements(parameters_map, measurements_seq_raw, len(variables_with_units))
-            print(variables_with_units)
-            print(measurements)
 
             tc_to_csv(file_path, variables_with_units, measurements)
-
 
         except IOError as e:
             print(f"  ❌ Error reading file {file_path}: {e}")
@@ -113,6 +86,7 @@ def process_measurements(parameters_map: list, measurements_seq: bytes, number_o
 
     all_measurements = []
     i = 0
+    first = True
 
     # Iterates over whole measurement seq
     while 0 < len(measurements_seq):
@@ -121,8 +95,13 @@ def process_measurements(parameters_map: list, measurements_seq: bytes, number_o
         for i in range(number_of_variables):
             # measurement_seq contains indexes into parameters_map. We are taking the index, and moving it to index from 0.
             index = numbers_from_bytes(measurements_seq, i) - 1
-            values.append(parameters_map[index])
+            # Not all variables are measured from the start. If measurement is missing, index is set to -1.
+            if index == -1:
+                values.append("")
+            else:
+                values.append(parameters_map[index])
         all_measurements.append(values)
+        first = False
         # remove the currently processed indexes
         measurements_seq = measurements_seq[4 * number_of_variables:]
 
@@ -162,7 +141,6 @@ def process_variables_units(data: bytes):
 
     data = data[12:] # removing first 3 numbers
 
-    i = 0
     #resulting array of numbers
     numbers = []
 
@@ -249,9 +227,9 @@ def decode_binary_data(binary_data: bytes) -> dict:
         The values are bytes objects.
     """
     # Define the separators as bytes
-    SEP_PARAMETERS_MAP = b'\x10\x00\x02\x00'  # Separator for ParametersMap start
-    SEP_MEASUREMENTS_SEQ = b'\x10\x00\x04\x00'  # Separator for MeasurementsSeq start
-    SEP_VARIABLES_UNITS_SEQ = b'\x10\x00\x05\x00'  # Separator for VariablesAndUnitsSeq start
+    SEP_PARAMETERS_MAP = b'\x00\x00\x10\x00\x02\x00'  # Separator for ParametersMap start
+    SEP_MEASUREMENTS_SEQ = b'\x00\x00\x10\x00\x04\x00'  # Separator for MeasurementsSeq start
+    SEP_VARIABLES_UNITS_SEQ = b'\x00\x00\x10\x00\x05\x00'  # Separator for VariablesAndUnitsSeq start
 
     # --- 1. Extract ParametersMap ---
     # From SEP_PARAMETERS_MAP till the end of the file
@@ -265,6 +243,7 @@ def decode_binary_data(binary_data: bytes) -> dict:
         start_parameters_map_data = start_parameters_map + len(SEP_PARAMETERS_MAP)
         ParametersMap = binary_data[start_parameters_map_data:]
     except ValueError:
+        print("Parameters map separator not found")
         # Separator not found
         ParametersMap = b''
         start_parameters_map = -1
@@ -291,6 +270,7 @@ def decode_binary_data(binary_data: bytes) -> dict:
         else:
             MeasurementsSeq = b''
     except ValueError:
+        print("Measurements separator not found")
         # Separator not found
         MeasurementsSeq = b''
         start_measurements_seq = -1
@@ -304,7 +284,6 @@ def decode_binary_data(binary_data: bytes) -> dict:
     try:
         # Find the start of VariablesAndUnitsSeq
         start_variables_units_seq = binary_data.index(SEP_VARIABLES_UNITS_SEQ)
-
         # Calculate the end position.
         if start_variables_units_seq != -1 and end_variables_units_seq != -1:
             # Data starts after its own separator
@@ -313,6 +292,7 @@ def decode_binary_data(binary_data: bytes) -> dict:
         else:
             VariablesAndUnitsSeq = b''
     except ValueError:
+        print("Variables and units separator not found")
         # Separator not found
         VariablesAndUnitsSeq = b''
 

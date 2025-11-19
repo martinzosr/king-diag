@@ -129,7 +129,7 @@ else:
 
             if not numeric_df.empty:
                 # Display the line chart for the selected range and numeric columns
-                st.line_chart(numeric_df)
+                #st.line_chart(numeric_df)
                 st.write(
                     f"Displaying **{len(numeric_df)}** rows (Rows **{start_row_index}** to **{end_row_index}**) across **{len(numeric_df.columns)}** numeric columns.")
             else:
@@ -145,26 +145,33 @@ else:
 
         if not numeric_df.empty:
             try:
-                # Calculate the required statistics for the numeric columns
-                summary_df = numeric_df.agg(
-                    average=('mean'),
-                    min_value=('min'),
-                    max_value=('max')
-                ).T.reset_index()  # Transpose, then make the old index (column names) a new column
-
+                summary_df = numeric_df.agg(['mean', 'min', 'max']).T.reset_index()
                 # Rename the columns for better display
                 summary_df.columns = ['Dataset Name', 'Average Value', 'Minimal Value', 'Maximal Value']
+#                summary_df['Select'] = False  # Initialize the selection column
 
-                # Format the numeric columns for better readability (2 decimal places)
-                format_mapping = {
-                    'Average Value': '{:.2f}'.format,
-                    'Minimal Value': '{:.2f}'.format,
-                    'Maximal Value': '{:.2f}'.format
-                }
-                styled_summary_df = summary_df.style.format(format_mapping)
+                summary_df['Select'] = (summary_df['Minimal Value'] != summary_df['Maximal Value'])
+                edited_df = st.data_editor(
+                    summary_df,
+                    width="stretch",
+                    column_config={
+                        "Select": st.column_config.CheckboxColumn(
+                            "Select",  # Column Header
+                            help="Select the dataset for further action",
+                            default=False,
+                            # 'Select' is the column name in summary_df
+                        ),
+                        # Optional: Format other columns if st.data_editor is used
+                        "Average Value": st.column_config.NumberColumn(format="%.2f"),
+                        "Minimal Value": st.column_config.NumberColumn(format="%.2f"),
+                        "Maximal Value": st.column_config.NumberColumn(format="%.2f"),
+                    },
+                    disabled=['Dataset Name', 'Average Value', 'Minimal Value', 'Maximal Value'],
+                    # Disable editing of summary data
+                    hide_index=True
+                )
 
-                # Display the resulting table
-                st.dataframe(styled_summary_df, use_container_width=True)
+                selected_rows = edited_df[edited_df['Select']]
 
             except Exception as e:
                 st.error(f"⚠️ An error occurred while generating the summary table: {e}")
